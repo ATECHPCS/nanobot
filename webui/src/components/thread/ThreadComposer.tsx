@@ -1028,7 +1028,7 @@ export function ThreadComposer({
     if (skillQuery !== null) {
       const query = skillQuery.text;
       return skills
-        .filter((skill) => skill.available)
+        .filter((skill) => skill.enabled !== false && skill.available)
         .filter((skill) => {
           const haystack = [
             skill.name,

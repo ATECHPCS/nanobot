@@ -1965,6 +1965,11 @@ def _run_gateway(
             return stripped or None
         return None
 
+    def _webui_skill_state_action(disabled_skills: set[str]) -> None:
+        config.agents.defaults.disabled_skills = sorted(disabled_skills)
+        agent.context.skills.disabled_skills = set(disabled_skills)
+        agent.subagents.disabled_skills = set(disabled_skills)
+
     # Create channel manager (forwards SessionManager so the WebSocket channel
     # can serve the embedded webui's REST surface).
     channels = ChannelManager(
@@ -1983,6 +1988,7 @@ def _run_gateway(
         webui_static_dist=webui_static_dist,
         webui_runtime_surface=webui_runtime_surface,
         webui_runtime_capabilities=webui_runtime_capabilities,
+        webui_skill_state_action=_webui_skill_state_action,
     )
 
     def _pick_heartbeat_target() -> tuple[str, str]:
