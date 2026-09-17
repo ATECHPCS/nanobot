@@ -1,0 +1,56 @@
+From b1822ed0ae1dfe01d1507073a856b1dade2b9552 Mon Sep 17 00:00:00 2001
+From: ATECHPCS <ian@andersontechsolutions.com>
+Date: Thu, 17 Sep 2026 09:22:29 -0400
+Subject: [PATCH] fix(agent): restore external MCP passthrough to SDK CLI
+ dropped by v0.3.5 merge
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Upstream #5343 ("move MCP lifecycle out of AgentLoop"), pulled in the
+v0.3.5 merge (37c3b4448), removed the `self._mcp_servers = mcp_servers or {}`
+constructor line while keeping the reader in _get_sdk_mcp_servers(). The
+field then stayed None forever, so external MCP servers (quickbooks stdio,
+graphiti-memory sse) were silently never attached to the claude CLI
+subprocess — only the in-process nanobot bridge survived. SDK-path agents
+with external MCP servers lost all those tools after their next restart
+(Stefany reported "QuickBooks connection is down" on 2026-09-17).
+
+Repopulate self._mcp_servers from tools_config.mcp_servers in __init__,
+right after self.tools_config is set. Restores exact pre-merge behavior.
+Verified end-to-end: Stefany's QBO tools reachable again (live
+search_accounts returned 173 accounts).
+
+---
+ nanobot/agent/loop.py | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/nanobot/agent/loop.py b/nanobot/agent/loop.py
+index a918281b3..15f4c5fc8 100644
+--- a/nanobot/agent/loop.py
++++ b/nanobot/agent/loop.py
+@@ -347,7 +347,7 @@ class AgentLoop:
+         self._sdk_mcp_ctx: Any = None
+         self._sdk_mcp_servers: dict[str, Any] | None = None
+         # External MCP server configs passed through to the SDK subprocess.
+-        # Populated out-of-band (may stay None); the SDK passthrough tolerates it.
++        # Annotated None here; populated from tools_config below once _tc is set.
+         self._mcp_servers: dict[str, MCPServerConfig] | None = None
+         # True for one turn after the SDK fast-path returns. _assemble_outbound
+         # checks this to suppress the _streamed metadata flag (the SDK returns
+@@ -391,6 +391,12 @@ class AgentLoop:
+             else defaults.tool_hint_max_length
+         )
+         self.tools_config = _tc
++        # Attach external MCP servers (e.g. quickbooks stdio, graphiti sse) to the
++        # SDK passthrough. Upstream #5343 (v0.3.5 merge) moved MCP lifecycle out of
++        # AgentLoop and dropped the old `self._mcp_servers = mcp_servers or {}`
++        # constructor line, leaving _get_sdk_mcp_servers() with only the in-process
++        # nanobot bridge — external tools silently vanished from the claude CLI.
++        self._mcp_servers = dict(_tc.mcp_servers) if _tc.mcp_servers else None
+         self.web_config = _tc.web
+         self.exec_config = _tc.exec
+         self._image_generation_provider_configs = dict(image_generation_provider_configs or {})
+-- 
+2.43.0
+
